@@ -8,7 +8,7 @@ const Whiteboard = () => {
   const [color, setColor] = useState('black');
   const [lineWidth, setLineWidth] = useState(5);
   const socketRef = useRef(null);
-  const prevCoordsRef = useRef({ x: 0, y: 0 }); // New: Ref to store previous coordinates
+  const prevCoordsRef = useRef({ x: 0, y: 0 }); 
 
   const presetColors = ['#000000', '#FF0000', '#008000', '#0000FF', '#FFFF00', '#FFFFFF'];
 
@@ -26,7 +26,8 @@ const Whiteboard = () => {
     context.lineWidth = lineWidth;
     contextRef.current = context;
 
-    socketRef.current = io('https://shan-whiteboard-backend.onrender.com/'); // REPLACE with your backend ngrok URL
+    // Correctly connected to your permanent Render backend
+    socketRef.current = io('https://shan-whiteboard-backend.onrender.com'); 
 
     socketRef.current.on('drawing', (data) => {
       const { offsetX, offsetY, prevX, prevY, color, lineWidth } = data;
@@ -38,6 +39,13 @@ const Whiteboard = () => {
       remoteContext.lineTo(offsetX, offsetY);
       remoteContext.stroke();
       remoteContext.closePath();
+    });
+    
+    // Listen for the clear canvas event from other clients
+    socketRef.current.on('clearCanvas', () => {
+        const remoteCanvas = canvasRef.current;
+        const remoteContext = remoteCanvas.getContext('2d');
+        remoteContext.clearRect(0, 0, remoteCanvas.width, remoteCanvas.height);
     });
 
     return () => {
@@ -59,7 +67,6 @@ const Whiteboard = () => {
     contextRef.current.beginPath();
     contextRef.current.moveTo(currentX, currentY);
     setIsDrawing(true);
-    // New: Store the initial coordinates
     prevCoordsRef.current = { x: currentX, y: currentY };
   };
 
@@ -76,11 +83,9 @@ const Whiteboard = () => {
       currentY = nativeEvent.offsetY;
     }
 
-    // Draw on our own canvas
     contextRef.current.lineTo(currentX, currentY);
     contextRef.current.stroke();
 
-    // New: Emit data using stored previous coordinates
     if (socketRef.current) {
         socketRef.current.emit('drawing', {
             offsetX: currentX,
@@ -92,7 +97,6 @@ const Whiteboard = () => {
         });
     }
 
-    // New: Update previous coordinates for the next drawing segment
     prevCoordsRef.current = { x: currentX, y: currentY };
   };
 
