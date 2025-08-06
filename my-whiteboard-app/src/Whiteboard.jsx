@@ -8,6 +8,7 @@ const Whiteboard = () => {
   const [color, setColor] = useState('black');
   const [lineWidth, setLineWidth] = useState(5);
   const socketRef = useRef(null);
+  const prevCoordsRef = useRef({ x: 0, y: 0 }); // New: Ref to store previous coordinates
 
   const presetColors = ['#000000', '#FF0000', '#008000', '#0000FF', '#FFFF00', '#FFFFFF'];
 
@@ -25,7 +26,8 @@ const Whiteboard = () => {
     context.lineWidth = lineWidth;
     contextRef.current = context;
 
-    socketRef.current = io('http://localhost:3001');
+    socketRef.current = io('https://shan-whiteboard-backend.onrender.com/'); // REPLACE with your backend ngrok URL
+
     socketRef.current.on('drawing', (data) => {
       const { offsetX, offsetY, prevX, prevY, color, lineWidth } = data;
       const remoteContext = contextRef.current;
@@ -45,31 +47,53 @@ const Whiteboard = () => {
   }, [color, lineWidth]);
 
   const startDrawing = ({ nativeEvent }) => {
-    const { offsetX, offsetY } = nativeEvent;
+    let currentX, currentY;
+    if (nativeEvent.touches) {
+      currentX = nativeEvent.touches[0].clientX - nativeEvent.target.getBoundingClientRect().left;
+      currentY = nativeEvent.touches[0].clientY - nativeEvent.target.getBoundingClientRect().top;
+    } else {
+      currentX = nativeEvent.offsetX;
+      currentY = nativeEvent.offsetY;
+    }
+
     contextRef.current.beginPath();
-    contextRef.current.moveTo(offsetX, offsetY);
+    contextRef.current.moveTo(currentX, currentY);
     setIsDrawing(true);
+    // New: Store the initial coordinates
+    prevCoordsRef.current = { x: currentX, y: currentY };
   };
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing) {
       return;
     }
-    const { offsetX, offsetY } = nativeEvent;
-    const prevX = nativeEvent.movementX;
-    const prevY = nativeEvent.movementY;
+    let currentX, currentY;
+    if (nativeEvent.touches) {
+      currentX = nativeEvent.touches[0].clientX - nativeEvent.target.getBoundingClientRect().left;
+      currentY = nativeEvent.touches[0].clientY - nativeEvent.target.getBoundingClientRect().top;
+    } else {
+      currentX = nativeEvent.offsetX;
+      currentY = nativeEvent.offsetY;
+    }
 
-    contextRef.current.lineTo(offsetX, offsetY);
+    // Draw on our own canvas
+    contextRef.current.lineTo(currentX, currentY);
     contextRef.current.stroke();
 
-    socketRef.current.emit('drawing', {
-      offsetX,
-      offsetY,
-      prevX: offsetX - prevX,
-      prevY: offsetY - prevY,
-      color,
-      lineWidth,
-    });
+    // New: Emit data using stored previous coordinates
+    if (socketRef.current) {
+        socketRef.current.emit('drawing', {
+            offsetX: currentX,
+            offsetY: currentY,
+            prevX: prevCoordsRef.current.x,
+            prevY: prevCoordsRef.current.y,
+            color,
+            lineWidth,
+        });
+    }
+
+    // New: Update previous coordinates for the next drawing segment
+    prevCoordsRef.current = { x: currentX, y: currentY };
   };
 
   const endDrawing = () => {
@@ -81,6 +105,9 @@ const Whiteboard = () => {
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
     context.clearRect(0, 0, canvas.width, canvas.height);
+    if (socketRef.current) {
+        socketRef.current.emit('clearCanvas');
+    }
   };
 
   return (
@@ -137,6 +164,9 @@ const Whiteboard = () => {
         onMouseDown={startDrawing}
         onMouseUp={endDrawing}
         onMouseMove={draw}
+        onTouchStart={startDrawing}
+        onTouchEnd={endDrawing}
+        onTouchMove={draw}
         ref={canvasRef}
         className="w-full h-screen bg-gray-100 cursor-crosshair shadow-inner"
       />
